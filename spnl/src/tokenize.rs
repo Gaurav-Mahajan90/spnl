@@ -111,7 +111,10 @@ fn encode_plus_part(
 
 fn extract_up_to_plus(q: &Query) -> Vec<String> {
     match q {
-        Query::Seq(v) | Query::Cross(v) => v.iter().flat_map(extract_up_to_plus).collect(),
+        Query::Seq(v) | Query::Cross(v) => {
+            let iter = v.iter().flat_map(extract_up_to_plus);
+            iter.collect()
+        },
         Query::Plus(_) => vec![],
         Query::Message(Assistant(m)) => vec![assistant(m)],
         Query::Message(System(m)) => vec![system(m)],
@@ -123,12 +126,13 @@ fn extract_up_to_plus(q: &Query) -> Vec<String> {
 fn extract_parts(q: &Query, in_plus: bool) -> Vec<String> {
     match (q, in_plus) {
         (Query::Seq(v), _) | (Query::Cross(v), _) => {
-            v.iter().flat_map(|qq| extract_parts(qq, in_plus)).collect()
+            let iter = v.iter().flat_map(|qq| extract_parts(qq, in_plus));
+            iter.collect()
         }
-        (Query::Plus(v), _) => v
-            .iter()
-            .map(|qq| extract_parts(qq, true).join(""))
-            .collect(),
+        (Query::Plus(v), _) => {
+            let iter = v.iter().map(|qq| extract_parts(qq, true).join(""));
+            iter.collect()
+        },
         (Query::Message(Assistant(m)), true) => vec![assistant(m)],
         (Query::Message(System(m)), true) => vec![system(m)],
         (Query::Message(User(m)), true) => vec![user(m)],
@@ -237,9 +241,18 @@ impl From<NonGenerateInput> for Query {
     fn from(input: NonGenerateInput) -> Self {
         match input {
             NonGenerateInput::Message(m) => Query::Message(m),
-            NonGenerateInput::Plus(v) => Query::Plus(v.into_iter().map(|m| m.into()).collect()),
-            NonGenerateInput::Cross(v) => Query::Cross(v.into_iter().map(|m| m.into()).collect()),
-            NonGenerateInput::Seq(v) => Query::Seq(v.into_iter().map(|m| m.into()).collect()),
+            NonGenerateInput::Plus(v) => {
+                let iter = v.into_iter().map(|m| m.into());
+                Query::Plus(iter.collect())
+            },
+            NonGenerateInput::Cross(v) => {
+                let iter = v.into_iter().map(|m| m.into());
+                Query::Cross(iter.collect())
+            },
+            NonGenerateInput::Seq(v) => {
+                let iter = v.into_iter().map(|m| m.into());
+                Query::Seq(iter.collect())
+            },
         }
     }
 }

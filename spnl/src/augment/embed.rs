@@ -32,6 +32,8 @@ pub async fn embed(
             openai::embed(openai::Provider::Gemini, &m[7..], &data).await
         }
 
-        _ => todo!("Unsupported embedding model {embedding_model}"),
+        _ => {
+            openai::embed(openai::Provider::OpenAI, embedding_model, &data).await
+        }
     }
 }

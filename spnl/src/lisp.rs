@@ -18,16 +18,25 @@ macro_rules! spnl {
     );
 
     // Core: execute serially
-    (seq $( $e:tt )+) => ( $crate::Query::Seq(vec![$( $crate::spnl_arg!( $e ).into() ),+]) );
+    (seq $( $e:tt )+) => ({
+        let iter = [$($crate::spnl_arg!( $e ).into()),+].into_iter();
+        $crate::Query::Seq(iter.collect())
+    });
 
     // Core: Dependent/needs-attention
-    (cross $( $e:tt )+) => ( $crate::Query::Cross(vec![$( $crate::spnl_arg!( $e ).into() ),+]) );
+    (cross $( $e:tt )+) => ({
+        let iter = [$($crate::spnl_arg!( $e ).into()),+].into_iter();
+        $crate::Query::Cross(iter.collect())
+    });
 
     // Core: Independent/no-attention with one or more inputs provided directly as a vector
     (plus $e:tt) => ( $crate::Query::Plus($crate::spnl_arg!( $e )) );
 
     // Core: Independent/no-attention with multiple inputs provided inline
-    (plus $( $e:tt )+) => ( $crate::Query::Plus(vec![$( $crate::spnl_arg!( $e ).into() ),+]) );
+    (plus $( $e:tt )+) => ({
+        let iter = [$($crate::spnl_arg!( $e ).into()),+].into_iter();
+        $crate::Query::Plus(iter.collect())
+    });
 
     // Core: A user message
     (user $e:tt) => ($crate::Query::Message($crate::Message::User($crate::spnl_arg!($e).clone().into())));

@@ -2,10 +2,6 @@ use crate::{Query, SpnlResult};
 
 pub mod backend;
 
-#[derive(thiserror::Error, Debug)]
-#[error("Model not found")]
-pub struct ModelNotFoundError;
-
 pub async fn generate(
     model: &str,
     input: &Query,
@@ -77,6 +73,17 @@ pub async fn generate(
                 .await
         }
 
-        _ => Err(ModelNotFoundError.into()),
+        _ => {
+            crate::generate::backend::openai::generate(
+                crate::generate::backend::openai::Provider::OpenAI,
+                model,
+                input,
+                max_tokens,
+                temp,
+                mp,
+                prepare,
+            )
+            .await
+        }
     }
 }

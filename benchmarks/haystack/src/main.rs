@@ -81,16 +81,15 @@ async fn main() -> Result<(), SpnlError> {
     } = Args::parse();
 
     let name_generator = petname::Petnames::default();
-    let names: Vec<String> = (0..num_documents)
-        .filter_map(|_| name_generator.generate_one(2, "-"))
-        .collect();
+    let names_iter = (0..num_documents).filter_map(|_| name_generator.generate_one(2, "-"));
+    let names: Vec<String> = names_iter.collect();
     assert_eq!(names.len(), num_documents);
 
     // let max_tokens: i32 = names.iter().map(|n| n.len() as i32).sum::<i32>();
 
     let mut rng = rand::thread_rng();
     let docs: Vec<Query> = if chain {
-        names
+        let iter = names
             .iter()
             .enumerate()
             .map(|(idx, name)| {
@@ -106,10 +105,10 @@ async fn main() -> Result<(), SpnlError> {
                     )
                 }
             })
-            .map(|text| spnl!(user text))
-            .collect()
+            .map(|text| spnl!(user text));
+        iter.collect()
     } else {
-        names
+        let iter = names
             .iter()
             .map(|name| {
                 format!(
@@ -117,12 +116,13 @@ async fn main() -> Result<(), SpnlError> {
                     lipsum::lipsum_words_with_rng(&mut rng, length)
                 )
             })
-            .map(|text| spnl!(user text))
-            .collect()
+            .map(|text| spnl!(user text));
+        iter.collect()
     };
 
     let expected_names = if chain {
-        let mut v = ::std::iter::repeat_n("".to_string(), num_documents).collect::<Vec<_>>();
+        let mut v_iter = ::std::iter::repeat_n("".to_string(), num_documents);
+        let mut v: Vec<String> = v_iter.collect();
         v[0] = names[0].clone();
         v
     } else {
@@ -133,7 +133,7 @@ async fn main() -> Result<(), SpnlError> {
     let user_prompt = "Tell me the names of the cats mentioned";
 
     let query: Query = if chunk > 0 {
-        let chunks: Vec<Query> = docs
+        let iter = docs
             .chunks(chunk)
             .map(|chunk| chunk.to_vec())
             .map(|chunk| {
@@ -141,8 +141,8 @@ async fn main() -> Result<(), SpnlError> {
                 g model
                     (cross (system system_prompt) (plus chunk) (user user_prompt))
                     temperature)
-            })
-            .collect();
+            });
+        let chunks: Vec<Query> = iter.collect();
 
         if chunks.len() == 1 {
             chunks[0].clone()
@@ -192,7 +192,8 @@ async fn main() -> Result<(), SpnlError> {
             let generated_names: GeneratedNames = serde_json::from_str::<GeneratedNames>(s)
                 .unwrap_or_else(|_| {
                     let n2: GeneratedNames2 = serde_json::from_str(s).unwrap_or_else(|_| vec![]);
-                    n2.into_iter().map(|n| n.name).collect()
+                    let iter = n2.into_iter().map(|n| n.name);
+                    iter.collect()
                 })
                 .into_iter()
                 .map(|s| s.to_lowercase())

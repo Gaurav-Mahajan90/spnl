@@ -22,7 +22,7 @@ pub enum Provider {
     Ollama,
 }
 
-fn api_base(provider: Provider) -> String {
+fn api_base(provider: &Provider) -> String {
     ::std::env::var("OPENAI_API_BASE").unwrap_or_else(|_| {
         {
             match provider {
@@ -49,7 +49,7 @@ pub async fn generate(
         todo!()
     }
 
-    let client = Client::with_config(OpenAIConfig::new().with_api_base(api_base(provider)));
+    let client = Client::with_config(OpenAIConfig::new().with_api_base(api_base(&provider)));
     let input_messages = messagify(input);
 
     let quiet = m.is_some();
@@ -76,11 +76,19 @@ pub async fn generate(
 
     let request = CreateChatCompletionRequestArgs::default()
         .model(model)
-        .messages(input_messages)
+        .messages(input_messages.clone())
         .temperature(temp.unwrap_or_default())
-        .max_tokens(mt) // yes, this is deprecated, but... for ollama https://github.com/ollama/ollama/issues/7125
+        .max_tokens(mt)
         .max_completion_tokens(mt)
         .build()?;
+
+    // Debug: print the request payload as JSON
+    if std::env::var("RUST_LOG").unwrap_or_default().contains("debug") || std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        match serde_json::to_string(&request) {
+            Ok(json) => eprintln!("[DEBUG] Request payload: {}", json),
+            Err(e) => eprintln!("[DEBUG] Failed to serialize request: {}", e),
+        }
+    }
 
     let style = ProgressStyle::with_template(
         "{msg} {wide_bar:.yellow/orange} {pos:>7}/{len:7} [{elapsed_precise}]",
@@ -102,6 +110,9 @@ pub async fn generate(
         stdout.write_all(b"\x1b[1mAssistant: \x1b[0m").await?;
     }
 
+    if std::env::var("RUST_LOG").unwrap_or_default().contains("debug") || std::env::var("VERBOSE").unwrap_or_default()=="1" {
+        eprintln!("[DEBUG] Creating chat stream to {}", api_base(&provider));
+    }
     let mut stream = client.chat().create_stream(request).await?;
     loop {
         match stream.next().await {
@@ -133,7 +144,10 @@ pub async fn generate(
 
 pub fn messagify(input: &Query) -> Vec<ChatCompletionRequestMessage> {
     match input {
-        Query::Seq(v) | Query::Plus(v) | Query::Cross(v) => v.iter().flat_map(messagify).collect(),
+        Query::Seq(v) | Query::Plus(v) | Query::Cross(v) => {
+            let iter = v.iter().flat_map(messagify);
+            iter.collect()
+        },
         Query::Message(System(s)) => vec![ChatCompletionRequestMessage::System(
             ChatCompletionRequestSystemMessage {
                 name: None,
@@ -172,7 +186,10 @@ pub fn messagify(input: &Query) -> Vec<ChatCompletionRequestMessage> {
 #[cfg(feature = "rag")]
 pub fn contentify(input: &Query) -> Vec<String> {
     match input {
-        Query::Seq(v) | Query::Plus(v) | Query::Cross(v) => v.iter().flat_map(contentify).collect(),
+        Query::Seq(v) | Query::Plus(v) | Query::Cross(v) => {
+            let iter = v.iter().flat_map(contentify);
+            iter.collect()
+        },
         Query::Message(Assistant(s)) | Query::Message(System(s)) => vec![s.clone()],
         o => {
             let s = o.to_string();
@@ -193,7 +210,7 @@ pub async fn embed(
 ) -> anyhow::Result<impl Iterator<Item = Vec<f32>> + use<>> {
     use async_openai::types::CreateEmbeddingRequestArgs;
 
-    let client = Client::with_config(OpenAIConfig::new().with_api_base(api_base(provider)));
+    let client = Client::with_config(OpenAIConfig::new().with_api_base(api_base(&provider)));
 
     let docs = match data {
         EmbedData::String(s) => &vec![s.clone()],
@@ -206,6 +223,9 @@ pub async fn embed(
         .input(docs)
         .build()?;
 
+    if std::env::var("RUST_LOG").unwrap_or_default().contains("debug") || std::env::var("VERBOSE").unwrap_or_default()=="1" {
+        eprintln!("[DEBUG] Creating embeddings request to {}", api_base(provider));
+    }
     Ok(client
         .embeddings()
         .create(request)

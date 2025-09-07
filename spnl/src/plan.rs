@@ -8,13 +8,9 @@ pub struct PlanOptions {
 
 async fn plan_vec_iter(v: &[Query], po: &PlanOptions) -> anyhow::Result<Vec<Query>> {
     // TODO: this can't be the most efficient way to do this
-    Ok(
-        futures::future::try_join_all(v.iter().map(|u| plan_iter(u, po)))
-            .await?
-            .into_iter()
-            .flatten()
-            .collect(),
-    )
+    let results = futures::future::try_join_all(v.iter().map(|u| plan_iter(u, po))).await?;
+    let iter = results.into_iter().flatten();
+    Ok(iter.collect())
 }
 
 fn cross_if_needed(v: Vec<Query>) -> Query {
@@ -32,16 +28,17 @@ async fn plan_iter(query: &Query, po: &PlanOptions) -> anyhow::Result<Vec<Query>
         Query::Cross(v) => Ok(vec![Query::Cross(plan_vec_iter(v, po).await?)]),
 
         #[cfg(feature = "rag")]
-        Query::Augment(a) => Ok(vec![Query::Plus(
-            crate::augment::retrieve(&a.embedding_model, &a.body, &a.doc, &po.aug)
-                .await?
-                .map(|s| Query::Message(crate::Message::User(s)))
-                .collect(),
-        )]),
+        Query::Augment(a) => {
+            let retrieved = crate::augment::retrieve(&a.embedding_model, &a.body, &a.doc, &po.aug)
+                .await?;
+            let iter = retrieved.map(|s| Query::Message(crate::Message::User(s)));
+            Ok(vec![Query::Plus(iter.collect())])
+        }
 
         Query::Repeat(Repeat { n, query }) => {
             let q = plan_iter(query, po).await?;
-            Ok(::std::iter::repeat_n(q, *n).flatten().collect::<Vec<_>>())
+            let iter = ::std::iter::repeat_n(q, *n).flatten();
+            Ok(iter.collect())
         }
 
         Query::Generate(Generate {
@@ -64,22 +61,25 @@ async fn plan_iter(query: &Query, po: &PlanOptions) -> anyhow::Result<Vec<Query>
 /// e.g. Plus-of-Plus or Cross with a tail Cross.
 fn simplify(query: &Query) -> Query {
     match query {
-        Query::Plus(v) => Query::Plus(match &v[..] {
-            // Plus of Plus
-            [Query::Plus(v2)] => v2.iter().map(simplify).collect(),
-
-            otherwise => otherwise.iter().map(simplify).collect(),
+        Query::Plus(v) => Query::Plus({
+            let iter: Box<dyn Iterator<Item = Query>> = match &v[..] {
+                // Plus of Plus
+                [Query::Plus(v2)] => Box::new(v2.iter().map(simplify)),
+                otherwise => Box::new(otherwise.iter().map(simplify)),
+            };
+            iter.collect()
         }),
-        Query::Cross(v) => Query::Cross(match &v[..] {
-            // Cross of tail Cross
-            [.., Query::Cross(v2)] => v
-                .iter()
-                .take(v.len() - 1)
-                .chain(v2.iter())
-                .map(simplify)
-                .collect(),
-
-            otherwise => otherwise.iter().map(simplify).collect(),
+        Query::Cross(v) => Query::Cross({
+            let iter: Box<dyn Iterator<Item = Query>> = match &v[..] {
+                // Cross of tail Cross
+                [.., Query::Cross(v2)] => Box::new(v
+                    .iter()
+                    .take(v.len() - 1)
+                    .chain(v2.iter())
+                    .map(simplify)),
+                otherwise => Box::new(otherwise.iter().map(simplify)),
+            };
+            iter.collect()
         }),
         Query::Generate(Generate {
             model,

@@ -15,10 +15,10 @@ fn extract_augments(query: &Query, enclosing_model: &Option<String>) -> Vec<(Str
         (Query::Generate(crate::Generate { model, input, .. }), _) => {
             extract_augments(input, &Some(model.clone()))
         }
-        (Query::Plus(v) | Query::Cross(v), _) => v
-            .iter()
-            .flat_map(|q| extract_augments(q, enclosing_model))
-            .collect(),
+        (Query::Plus(v) | Query::Cross(v), _) => {
+            let iter = v.iter().flat_map(|q| extract_augments(q, enclosing_model));
+            iter.collect()
+        },
         (Query::Augment(a), Some(enclosing_model)) => vec![(enclosing_model.clone(), a.clone())],
         _ => vec![],
     }

@@ -38,10 +38,16 @@ pub async fn generate(
     });
     // eprintln!("Sending query {:?}", to_string(&query)?);
 
+    let url = format!("http://localhost:8000/v1/query/{exec}");
+    let body = to_string(&query)?;
+    if std::env::var("RUST_LOG").unwrap_or_default().contains("debug") || std::env::var("VERBOSE").unwrap_or_default()=="1" {
+        eprintln!("[DEBUG] POST {}", url);
+        eprintln!("[DEBUG] Body: {}", body);
+    }
     let response = client
-        .post(format!("http://localhost:8000/v1/query/{exec}"))
+        .post(url)
         .header("Content-Type", "text/plain")
-        .body(to_string(&query)?)
+        .body(body)
         .send()
         .await?;
 
